@@ -1,92 +1,100 @@
-const functions = require("firebase-functions");
-const express = require("express");
-const mysql = require("mysql");
+const express = require('express');
+const mysql = require('mysql');
 
 const app = express();
+const port = 3000;
 
-// 使用中间件解析 JSON 请求体
+// 使用中间件解析JSON请求体
 app.use(express.json());
-
-// 从环境变量中获取数据库连接信息
-const host = functions.config().database.host;
-const user = functions.config().database.user;
-const password = functions.config().database.password;
-const database = functions.config().database.database;
-const port = 3306;
 
 // 创建数据库连接
 const connection = mysql.createConnection({
-  host,
-  user,
-  password,
-  database,
-  port,
+  host: '114.116.203.217',
+  user: 'root',
+  password: 'a15558437825+',
+  database: 'iot_data',
+  port: 3306
 });
 
 // 连接数据库
-connection.connect((err) => {
+connection.connect(err => {
   if (err) {
-    console.error("数据库连接失败: ", err);
+    console.error(`数据库连接失败: ${err.stack}`);
     return;
   }
-  console.log("数据库连接成功!");
+  console.log('连接数据库成功');
 });
 
-// 定义 API 端点
-app.post("/fetchData", (req, res) => {
+// 定义API端点
+app.post('/fetchData', (req, res) => {
   // 查询数据表中前十条数据
-  connection.query("SELECT content FROM iot_data LIMIT 10", (error, results) => {
+  connection.query('SELECT content FROM iot_data LIMIT 10', (error, results) => {
     if (error) {
       console.error(`查询失败: ${error.stack}`);
-      res.status(500).send({resCode: "1", resMsg: "查询失败"});
+      res.status(500).send({ resCode: '1', resMsg: '查询失败' });
       return;
     }
 
-    // 解析内容并提取 H 和 T 数据
-    const dataX = [];
-    const tValues = [];
-    const hValues = [];
+    // 解析内容并提取H和T数据
+    let dataX = [];
+    let T_values = [];
+    let H_values = [];
 
-    results.forEach((row) => {
-      const contentArray = JSON.parse(row.content);
-      contentArray.forEach((entry) => {
-        if (
-          entry.properties.T !== undefined &&
-          entry.properties.H !== undefined
-        ) {
+    results.forEach(row => {
+      let contentArray = JSON.parse(row.content);
+      contentArray.forEach(entry => {
+        if (entry.properties.T !== undefined && entry.properties.H !== undefined) {
           dataX.push(entry.event_time);
-          tValues.push(entry.properties.T);
-          hValues.push(entry.properties.H);
+          T_values.push(entry.properties.T);
+          H_values.push(entry.properties.H);
         }
       });
     });
 
     // 构造响应数据
     const response = {
-      resCode: "0",
-      resMsg: "成功",
+      resCode: '0',
+      resMsg: '成功',
       result: [
         {
           order: {
-            dataX: dataX.slice(0, 10), // 只取前 10 个数据
+            dataX: dataX.slice(0, 10),  // 只取前10个数据
             dataValue: [
               {
-                title: "T",
-                value: tValues.slice(0, 10), // 只取前 10 个数据
+                title: 'T',
+                value: T_values.slice(0, 10),  // 只取前10个数据
               },
               {
-                title: "H",
-                value: hValues.slice(0, 10), // 只取前 10 个数据
-              },
-            ],
-          },
-        },
-      ],
+                title: 'H',
+                value: H_values.slice(0, 10),  // 只取前10个数据
+              }
+            ]
+          }
+        }
+      ]
     };
 
     res.json(response);
   });
 });
 
-// 导出 API 函数
-exports.api = functions.https.onRequest(app);
+// 启动服务器
+const server = app.listen(port, () => {
+  console.log(`服务器运行在 http://localhost:${port}`);
+});
+
+// 捕获进程终止信号，确保关闭数据库连接
+process.on('SIGINT', () => {
+  console.log('收到 SIGINT 信号，正在关闭服务器和数据库连接');
+  connection.end(err => {
+    if (err) {
+      console.error(`关闭连接失败: ${err.stack}`);
+      process.exit(1);
+    }
+    console.log('关闭连接成功');
+    server.close(() => {
+      console.log('Express 服务器已关闭');
+      process.exit(0);
+    });
+  });
+});
